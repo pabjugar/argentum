@@ -345,31 +345,31 @@ export class GameRuntime {
       return false;
     }
 
+    if (now - this.lastWalkAt < this.currentWalkIntervalMs()) {
+      return false;
+    }
+
     const destination = this.predictedDestination(direction);
     if (!destination) {
       return false;
     }
 
-    // Girar a mirar la direccion INMEDIATAMENTE, aunque el paso este en enfriamiento.
-    // Antes el gate de cooldown estaba delante y descartaba la tecla entera (ni giro):
-    // por eso en giros rapidos (der-arriba-der) "no cogia" la nueva direccion.
-    if (state.world.self.heading !== destination.heading) {
-      this.transport.sendHeading(direction);
-      this.renderer?.setSelfHeading(destination.heading);
-      this.ui.setSelfHeading(destination.heading);
-    }
-
-    // Cadencia de paso (autoritativa): no andar mas rapido que el walk speed.
-    if (now - this.lastWalkAt < this.currentWalkIntervalMs()) {
-      return false;
-    }
-
     if (this.isTileBlocked(destination.x, destination.y) || this.isTileOccupied(destination.x, destination.y)) {
+      if (state.world.self.heading !== destination.heading) {
+        this.transport.sendHeading(direction);
+        this.renderer?.setSelfHeading(destination.heading);
+        this.ui.setSelfHeading(destination.heading);
+      }
       return false;
     }
 
     this.transport.sendWalk(direction);
     this.lastWalkAt = now;
+
+    if (state.world.self.heading !== destination.heading) {
+      this.renderer?.setSelfHeading(destination.heading);
+      this.ui.setSelfHeading(destination.heading);
+    }
 
     const walkInterval = this.currentWalkIntervalMs();
     const speed = state.world.self.speed;
