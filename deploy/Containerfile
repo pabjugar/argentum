@@ -1,0 +1,95 @@
+# Containerfile para desplegar aomania-lambda (fork de lambdaclass/argentum) en Podman.
+#
+# Corrige los dos huecos del server/Dockerfile original para un deploy real:
+#   1. Construye el cliente web (client/dist) — el Dockerfile original no lo hacía.
+#   2. Copia resources/ (mapas, gráficos, índices, sonidos) y client/dist al runner
+#      — sin ellos el plug StaticAssets descarta rutas y la SPA/gráficos/map-pack dan 404.
+#
+# El contexto de build DEBE ser la raíz del repo (necesita client/ y resources/):
+#   podman build -f deploy/Containerfile -t aomania-lambda:latest .
+
+ARG ELIXIR_VERSION=1.16.3
+ARG OTP_VERSION=26.2.5.5
+ARG DEBIAN_CODENAME=bookworm
+ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_CODENAME}-20240612"
+ARG RUNNER_IMAGE="debian:${DEBIAN_CODENAME}-slim"
+
+# ---------- build stage (Elixir + Rust + Node en una sola etapa) ----------
+# Una sola etapa porque el build del cliente (`npm run build`) dispara el hook
+# `prebuild` -> `maps:build` -> `mix run scripts/build_map_pack.exs`, que necesita
+# Elixir + el server compilado + resources/raw/Mapas presentes. Separar Node del
+# builder Elixir rompería ese hook.
+FROM ${BUILDER_IMAGE} AS builder
+
+RUN apt-get update -y && \
+    apt-get install -y build-essential git curl clang protobuf-compiler && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Rust (para el NIF TileGrid)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+ENV MIX_ENV="prod"
+WORKDIR /build
+
+RUN mix local.hex --force && mix local.rebar --force
+
+# --- deps del server (capa cacheable) ---
+COPY server/mix.exs server/mix.lock ./server/
+COPY server/apps/ao_protocol/mix.exs   ./server/apps/ao_protocol/mix.exs
+COPY server/apps/ao_session/mix.exs    ./server/apps/ao_session/mix.exs
+COPY server/apps/ao_entities/mix.exs   ./server/apps/ao_entities/mix.exs
+COPY server/apps/ao_tcp_gateway/mix.exs ./server/apps/ao_tcp_gateway/mix.exs
+COPY server/apps/arena/mix.exs         ./server/apps/arena/mix.exs
+COPY server/apps/bot_army/mix.exs      ./server/apps/bot_army/mix.exs
+COPY server/apps/game_backend/mix.exs  ./server/apps/game_backend/mix.exs
+COPY server/config server/config
+WORKDIR /build/server
+RUN mix deps.get --only prod && mix deps.compile
+
+# --- código + assets ---
+WORKDIR /build
+COPY server/apps/arena/native server/apps/arena/native
+COPY server server
+COPY client client
+COPY resources resources
+
+# Compila el server (necesario para generar el map pack).
+WORKDIR /build/server
+RUN mix compile
+
+# --- build del cliente (genera el map pack vía prebuild y produce client/dist) ---
+WORKDIR /build/client
+RUN npm ci && npm run build
+
+# --- release del server ---
+WORKDIR /build/server
+RUN mix release argentum
+
+# ---------- runner stage ----------
+FROM ${RUNNER_IMAGE}
+
+RUN apt-get update -y && \
+    apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+ENV LANG=en_US.UTF-8
+
+WORKDIR /app
+
+# El release y sus assets viven bajo /app; ARGENTUM_PROJECT_ROOT ancla la
+# resolución de resources/ y client/dist a /app (si no, runtime.exs mira en / ).
+COPY --from=builder /build/server/_build/prod/rel/argentum ./
+COPY --from=builder /build/resources ./resources
+COPY --from=builder /build/client/dist ./client/dist
+
+ENV PHX_SERVER=true
+ENV ARGENTUM_PROJECT_ROOT=/app
+ENV PORT=3000
+
+# 3000 = HTTP (SPA + API + assets del juego) ; 7667 = WebSocket del juego (/ao)
+EXPOSE 3000 7667
+
+CMD ["bin/argentum", "start"]

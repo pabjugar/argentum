@@ -12,3 +12,6 @@ test-results/
 client/playwright-report/
 client/test-results/
 client/blob-report/
+
+# aomania-lambda deploy secrets
+deploy/.env

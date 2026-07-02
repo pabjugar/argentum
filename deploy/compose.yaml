@@ -1,0 +1,41 @@
+# Despliegue mínimo de aomania-lambda con Podman en el Corsair.
+#   podman compose -f deploy/compose.yaml --env-file deploy/.env up -d
+#
+# Variables en deploy/.env (ver env.example). NO comitear .env.
+services:
+  db:
+    image: postgres:16
+    container_name: aomania_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - aomania_db_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Sin puerto publicado: sólo la app la usa por la red interna.
+
+  app:
+    image: aomania-lambda:latest
+    container_name: aomania_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      DATABASE_URL: ecto://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+      PHX_HOST: ${PHX_HOST}
+      PORT: "3000"
+      PHX_SERVER: "true"
+    ports:
+      - "3000:3000"   # HTTP: SPA + API + assets
+      - "7667:7667"   # WebSocket del juego (/ao)
+    restart: unless-stopped
+
+volumes:
+  aomania_db_data:
