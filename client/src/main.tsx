@@ -71,6 +71,22 @@ function isNonFatalBrowserEvent(error: unknown) {
   return false;
 }
 
+// Solo los errores lanzados por el bundle propio del juego deben ser fatales.
+// Los de extensiones del navegador (chrome-extension://…), scripts inyectados o
+// fuentes anónimas/cross-origin NO deben tumbar una partida en curso.
+function isAppOwnError(event: ErrorEvent) {
+  const filename = event.filename;
+  if (!filename) {
+    return false; // eval inyectado / anónimo → no es nuestro
+  }
+  try {
+    const url = new URL(filename, window.location.href);
+    return url.origin === window.location.origin && /^https?:$/.test(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
 function renderFatalBootScreen(summary: string, detail: string) {
   const mountNode = document.getElementById("app");
   if (!mountNode) {
@@ -137,6 +153,13 @@ if (typeof window !== "undefined") {
       return;
     }
 
+    // Errores de extensiones/inyectados/cross-origin: registrar pero NO tumbar
+    // la partida. Solo el código propio del juego puede ser fatal.
+    if (!isAppOwnError(event)) {
+      console.warn("window.error ignorado (no es del bundle del juego)", event.filename, event.error ?? event.message);
+      return;
+    }
+
     const fatal = event.error ?? event.message;
     if (isNonFatalBrowserEvent(fatal)) {
       console.warn("window.error non-fatal payload", fatal);
@@ -149,14 +172,9 @@ if (typeof window !== "undefined") {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    if (isNonFatalBrowserEvent(event.reason)) {
-      console.warn("window.unhandledrejection non-fatal payload", event.reason);
-      return;
-    }
-
-    const { summary, detail } = formatFatalError(event.reason);
-    console.error("window.unhandledrejection", event.reason);
-    renderFatalBootScreen(summary, detail);
+    // Las promesas rechazadas casi nunca dejan el juego inservible y son una
+    // fuente habitual de ruido (extensiones, red). Registrar, nunca fatal.
+    console.warn("window.unhandledrejection (no fatal)", event.reason);
   });
 }
 
