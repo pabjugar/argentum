@@ -11,9 +11,12 @@
 ARG ELIXIR_VERSION=1.16.3
 ARG OTP_VERSION=26.2.5.5
 ARG DEBIAN_CODENAME=bookworm
+# Datestamp de la imagen hexpm/elixir (los antiguos se purgan de Docker Hub;
+# actualizar a un tag existente si vuelve a fallar con "manifest unknown").
+ARG HEXPM_DATE=20260610
 # Nombres totalmente cualificados: Podman no resuelve short-names sin
 # unqualified-search-registries configurados (caso del Corsair).
-ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_CODENAME}-20240612"
+ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_CODENAME}-${HEXPM_DATE}"
 ARG RUNNER_IMAGE="docker.io/library/debian:${DEBIAN_CODENAME}-slim"
 
 # ---------- build stage (Elixir + Rust + Node en una sola etapa) ----------
