@@ -1,0 +1,21 @@
+# Quadlet: app del juego (server Elixir + cliente web) del pod aomania.
+[Unit]
+Description=aomania-lambda app (Argentum web)
+Requires=aomania-db.service
+After=aomania-db.service
+
+[Container]
+ContainerName=aomania_app
+Image=localhost/aomania-lambda:latest
+Pod=aomania.pod
+EnvironmentFile=%h/.aomania.env
+# Migra la DB antes de arrancar (idempotente).
+ExecStartPre=/usr/bin/podman run --rm --pod aomania --env-file %h/.aomania.env localhost/aomania-lambda:latest bin/argentum eval GameBackend.Release.migrate()
+
+[Service]
+Restart=always
+# El boot carga ~843 mapas; dar margen.
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,11 @@
+# Quadlet: pod de aomania-lambda. Instalar en ~/.config/containers/systemd/ del
+# Corsair y `systemctl --user daemon-reload`. On/off: systemctl --user start|stop aomania-pod
+[Pod]
+PodName=aomania
+# HTTP (SPA + API + assets) en 8080 del host (3000 lo ocupa ralphdash).
+PublishPort=8080:3000
+# WebSocket del juego (/ao). El cliente lo arma como ws://<host>:7667/ao.
+PublishPort=7667:7667
+
+[Install]
+WantedBy=default.target

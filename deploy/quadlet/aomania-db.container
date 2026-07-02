@@ -1,0 +1,23 @@
+# Quadlet: Postgres del pod aomania.
+[Unit]
+Description=aomania-lambda Postgres
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=aomania_db
+Image=docker.io/library/postgres:16
+Pod=aomania.pod
+EnvironmentFile=%h/.aomania.env
+Environment=PGDATA=/var/lib/postgresql/data/pgdata
+Volume=aomania_db_data:/var/lib/postgresql/data
+# healthcheck para que la app espere a la DB
+HealthCmd=pg_isready -U argentum
+HealthInterval=5s
+HealthRetries=10
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
