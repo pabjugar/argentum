@@ -12,6 +12,12 @@ config :logger, level: :info
 
 config :arena, ArenaWeb.Endpoint, cache_static_manifest: "priv/static/cache_manifest.json"
 
+# Resolver los plugs del endpoint en RUNTIME (no en compile-time). Sin esto, el
+# plug ArenaWeb.StaticAssets calcula sus rutas durante `mix release` (paths de
+# /build) y las hornea; en el contenedor (/app) esos paths no existen y todo el
+# tráfico estático cae al SPA. En dev Phoenix ya usa :runtime; aquí lo forzamos.
+config :phoenix, :plug_init_mode, :runtime
+
 ###################################
 # App configuration: game_backend #
 ###################################
