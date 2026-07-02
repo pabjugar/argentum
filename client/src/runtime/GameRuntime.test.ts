@@ -290,6 +290,60 @@ describe("GameRuntime movement prediction", () => {
     expect(runtime.getDebugSnapshot().predictedX).toBe(4);
   });
 
+  it("a single tap that steps immediately does not fire a phantom second step", () => {
+    const state = createInitialState();
+    state.connection.status = "connected";
+    state.world.mapStatus = "ready";
+    state.world.map = {
+      mapId: 1,
+      name: "Test",
+      width: 8,
+      height: 5,
+      tiles: new Uint8Array(40),
+      musicHi: 0,
+      musicLow: 0,
+      layers: [[], [], [], []],
+      npcs: [],
+      exits: []
+    };
+    state.world.self.x = 2;
+    state.world.self.y = 2;
+    state.world.self.heading = 2;
+    state.world.self.speed = 1;
+    state.world.walkIntervalMs = 210;
+
+    const transport = {
+      sendWalk: vi.fn(),
+      sendHeading: vi.fn(),
+      requestPositionUpdate: vi.fn()
+    };
+    const ui = {
+      getState: () => state,
+      setSelfPosition: (x: number, y: number) => {
+        state.world.self.x = x;
+        state.world.self.y = y;
+      },
+      setSelfHeading: (heading: number) => {
+        state.world.self.heading = heading;
+      }
+    };
+
+    const runtime = new GameRuntime(transport, ui);
+    runtime.onMapLoaded(1);
+
+    // Discrete tap: the step happens immediately because the cooldown is clear.
+    runtime.rememberMovementKey("east", false, 1_000);
+    runtime.tick(1_000);
+    runtime.releaseMovementKey("east");
+    expect(transport.sendWalk).toHaveBeenCalledTimes(1);
+
+    // The next tile boundary (and beyond) must NOT step again from a stale buffer.
+    runtime.tick(1_210);
+    runtime.tick(1_420);
+    expect(transport.sendWalk).toHaveBeenCalledTimes(1);
+    expect(runtime.getDebugSnapshot().predictedX).toBe(3);
+  });
+
   it("drops a buffered intent once its window expires", () => {
     const state = createInitialState();
     state.connection.status = "connected";

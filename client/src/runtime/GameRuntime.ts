@@ -114,13 +114,20 @@ export class GameRuntime {
   tick(now: number) {
     const held = this.activeMovementDirection();
     if (held) {
-      this.tryPredictedWalk(held, now);
+      // A held key is serviced directly. If it actually stepped, drop any
+      // buffered intent: that press has been honored, so the buffer must not
+      // fire a second phantom step at the next boundary.
+      if (this.tryPredictedWalk(held, now)) {
+        this.clearBufferedIntent();
+      }
       return;
     }
 
-    // No key held: honor a recent buffered intent for one step. The walk still
-    // goes through tryPredictedWalk, which only turns/steps at the tile
-    // boundary (respects the cooldown), so the heading never flips mid-slide.
+    // No key held: honor a recent buffered intent that could NOT be serviced
+    // while it was pressed (it was released mid-cooldown). The walk still goes
+    // through tryPredictedWalk, which only turns/steps at the tile boundary
+    // (respects the cooldown), so the heading never flips mid-slide. Consumed
+    // once so a single tap never produces more than one step.
     if (this.bufferedDirection == null) {
       return;
     }
