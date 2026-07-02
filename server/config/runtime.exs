@@ -50,6 +50,16 @@ if System.get_env("PHX_SERVER") do
 end
 
 if config_env() == :prod do
+  # DB en runtime: sin esto la url se hornearía nil en compile-time (prod.exs) y
+  # el Repo arrancaría con config vacía (devuelve :ignore -> "Repo not started").
+  # Guardado por presencia de DATABASE_URL para no romper el build del map-pack,
+  # que corre `mix run` con MIX_ENV=prod pero sin base de datos.
+  if database_url = System.get_env("DATABASE_URL") do
+    config :game_backend, GameBackend.Repo,
+      url: database_url,
+      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "50")
+  end
+
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
       raise """
