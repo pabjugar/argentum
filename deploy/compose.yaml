@@ -4,7 +4,7 @@
 # Variables en deploy/.env (ver env.example). NO comitear .env.
 services:
   db:
-    image: postgres:16
+    image: docker.io/library/postgres:16
     container_name: aomania_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}

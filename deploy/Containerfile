@@ -11,8 +11,10 @@
 ARG ELIXIR_VERSION=1.16.3
 ARG OTP_VERSION=26.2.5.5
 ARG DEBIAN_CODENAME=bookworm
-ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_CODENAME}-20240612"
-ARG RUNNER_IMAGE="debian:${DEBIAN_CODENAME}-slim"
+# Nombres totalmente cualificados: Podman no resuelve short-names sin
+# unqualified-search-registries configurados (caso del Corsair).
+ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_CODENAME}-20240612"
+ARG RUNNER_IMAGE="docker.io/library/debian:${DEBIAN_CODENAME}-slim"
 
 # ---------- build stage (Elixir + Rust + Node en una sola etapa) ----------
 # Una sola etapa porque el build del cliente (`npm run build`) dispara el hook
