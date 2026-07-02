@@ -703,8 +703,8 @@ export class SessionClient {
     return this.runtime.getDebugSnapshot();
   }
 
-  rememberMovementKey(direction: Direction) {
-    this.runtime.rememberMovementKey(direction);
+  rememberMovementKey(direction: Direction, isRepeat = false, now?: number) {
+    this.runtime.rememberMovementKey(direction, isRepeat, now);
   }
 
   releaseMovementKey(direction: Direction) {

@@ -224,4 +224,118 @@ describe("GameRuntime movement prediction", () => {
     expect(runtime.getDebugSnapshot().predictedX).toBe(4);
     expect(runtime.getDebugSnapshot().predictedY).toBe(2);
   });
+
+  it("buffers a rapid re-tap during cooldown and steps once at the next boundary", () => {
+    const state = createInitialState();
+    state.connection.status = "connected";
+    state.world.mapStatus = "ready";
+    state.world.map = {
+      mapId: 1,
+      name: "Test",
+      width: 8,
+      height: 5,
+      tiles: new Uint8Array(40),
+      musicHi: 0,
+      musicLow: 0,
+      layers: [[], [], [], []],
+      npcs: [],
+      exits: []
+    };
+    state.world.self.x = 2;
+    state.world.self.y = 2;
+    state.world.self.heading = 2;
+    state.world.self.speed = 1;
+    state.world.walkIntervalMs = 210;
+
+    const transport = {
+      sendWalk: vi.fn(),
+      sendHeading: vi.fn(),
+      requestPositionUpdate: vi.fn()
+    };
+    const ui = {
+      getState: () => state,
+      setSelfPosition: (x: number, y: number) => {
+        state.world.self.x = x;
+        state.world.self.y = y;
+      },
+      setSelfHeading: (heading: number) => {
+        state.world.self.heading = heading;
+      }
+    };
+
+    const runtime = new GameRuntime(transport, ui);
+    runtime.onMapLoaded(1);
+
+    // First step, then the key is released.
+    runtime.rememberMovementKey("east", false, 1_000);
+    runtime.tick(1_000);
+    runtime.releaseMovementKey("east");
+    expect(transport.sendWalk).toHaveBeenCalledTimes(1);
+
+    // Rapid re-tap while still in the walk cooldown; released before the boundary.
+    runtime.rememberMovementKey("east", false, 1_050);
+    runtime.releaseMovementKey("east");
+
+    // A tick still inside the cooldown must not step.
+    runtime.tick(1_100);
+    expect(transport.sendWalk).toHaveBeenCalledTimes(1);
+
+    // At the tile boundary the buffered intent fires exactly one step.
+    runtime.tick(1_210);
+    expect(transport.sendWalk).toHaveBeenCalledTimes(2);
+
+    // The buffer is consumed once: no extra step afterwards.
+    runtime.tick(1_420);
+    expect(transport.sendWalk).toHaveBeenCalledTimes(2);
+    expect(runtime.getDebugSnapshot().predictedX).toBe(4);
+  });
+
+  it("drops a buffered intent once its window expires", () => {
+    const state = createInitialState();
+    state.connection.status = "connected";
+    state.world.mapStatus = "ready";
+    state.world.map = {
+      mapId: 1,
+      name: "Test",
+      width: 8,
+      height: 5,
+      tiles: new Uint8Array(40),
+      musicHi: 0,
+      musicLow: 0,
+      layers: [[], [], [], []],
+      npcs: [],
+      exits: []
+    };
+    state.world.self.x = 2;
+    state.world.self.y = 2;
+    state.world.self.heading = 2;
+    state.world.self.speed = 1;
+    state.world.walkIntervalMs = 210;
+
+    const transport = {
+      sendWalk: vi.fn(),
+      sendHeading: vi.fn(),
+      requestPositionUpdate: vi.fn()
+    };
+    const ui = {
+      getState: () => state,
+      setSelfPosition: (x: number, y: number) => {
+        state.world.self.x = x;
+        state.world.self.y = y;
+      },
+      setSelfHeading: (heading: number) => {
+        state.world.self.heading = heading;
+      }
+    };
+
+    const runtime = new GameRuntime(transport, ui);
+    runtime.onMapLoaded(1);
+
+    // A tap that is never followed by a timely tick (window is 210 + 60 ms).
+    runtime.rememberMovementKey("east", false, 1_000);
+    runtime.releaseMovementKey("east");
+
+    runtime.tick(1_400);
+    expect(transport.sendWalk).not.toHaveBeenCalled();
+  });
 });

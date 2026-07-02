@@ -712,8 +712,9 @@ export function App({ uiDemoMode = false }: AppProps) {
       }
 
       event.preventDefault();
-      session.rememberMovementKey(direction);
-      session.tick(performance.now());
+      const pressedAt = performance.now();
+      session.rememberMovementKey(direction, event.repeat, pressedAt);
+      session.tick(pressedAt);
     };
 
     const releaseHandler = (event: KeyboardEvent) => {

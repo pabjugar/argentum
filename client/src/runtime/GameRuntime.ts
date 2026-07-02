@@ -41,6 +41,8 @@ export class GameRuntime {
   private readonly ui: RuntimeUiBridge;
   private renderer: WorldRenderer | null = null;
   private movementKeys: Direction[] = [];
+  private bufferedDirection: Direction | null = null;
+  private bufferedAt = Number.NEGATIVE_INFINITY;
   private lastWalkAt = Number.NEGATIVE_INFINITY;
   private pendingWalkSteps: Array<{ x: number; y: number; timeoutId: number }> = [];
   private authorityX: number | null = null;
@@ -83,11 +85,21 @@ export class GameRuntime {
     this.transferTargetMapId = null;
     this.transferBootstrapReceived = false;
     this.transferMapDataReady = false;
+    this.clearBufferedIntent();
   }
 
-  rememberMovementKey(direction: Direction) {
+  rememberMovementKey(direction: Direction, isRepeat = false, now = performance.now()) {
     this.movementKeys = this.movementKeys.filter((key) => key !== direction);
     this.movementKeys.push(direction);
+    // Buffer the last *genuine* press (ignore OS auto-repeat) so a rapid
+    // tap released before the walk cooldown expires still produces a step at
+    // the next tile boundary. Repeats are skipped so holding a key doesn't
+    // keep the buffer fresh and cause an extra step after release. `now` shares
+    // the same clock as tick() so the expiry window is measured consistently.
+    if (!isRepeat) {
+      this.bufferedDirection = direction;
+      this.bufferedAt = now;
+    }
   }
 
   releaseMovementKey(direction: Direction) {
@@ -96,15 +108,31 @@ export class GameRuntime {
 
   clearMovementKeys() {
     this.movementKeys = [];
+    this.clearBufferedIntent();
   }
 
   tick(now: number) {
-    const direction = this.activeMovementDirection();
-    if (!direction) {
+    const held = this.activeMovementDirection();
+    if (held) {
+      this.tryPredictedWalk(held, now);
       return;
     }
 
-    this.tryPredictedWalk(direction, now);
+    // No key held: honor a recent buffered intent for one step. The walk still
+    // goes through tryPredictedWalk, which only turns/steps at the tile
+    // boundary (respects the cooldown), so the heading never flips mid-slide.
+    if (this.bufferedDirection == null) {
+      return;
+    }
+
+    if (now - this.bufferedAt >= this.movementBufferWindowMs()) {
+      this.clearBufferedIntent();
+      return;
+    }
+
+    if (this.tryPredictedWalk(this.bufferedDirection, now)) {
+      this.clearBufferedIntent();
+    }
   }
 
   requestPositionUpdate() {
@@ -209,6 +237,17 @@ export class GameRuntime {
 
   private activeMovementDirection() {
     return this.movementKeys.length > 0 ? this.movementKeys[this.movementKeys.length - 1] : null;
+  }
+
+  private clearBufferedIntent() {
+    this.bufferedDirection = null;
+    this.bufferedAt = Number.NEGATIVE_INFINITY;
+  }
+
+  private movementBufferWindowMs() {
+    // Must cover a full walk interval (a tap right after a step boundary has to
+    // survive to the next one) plus a little slack for frame/timing jitter.
+    return this.currentWalkIntervalMs() + 60;
   }
 
   private currentWalkIntervalMs() {
