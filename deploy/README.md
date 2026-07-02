@@ -4,6 +4,44 @@ Runbook para levantar el server web de Argentum (fork de lambdaclass) en el Cors
 jugable en el navegador por amigos vía Tailscale. Ver `../../PLAN.md` y `../../ANALISIS.md`
 para el contexto.
 
+## ✅ ESTADO: DESPLEGADO Y FUNCIONANDO (2026-07-02)
+
+Corre en el Corsair como servicio systemd de usuario (Quadlet), persistente y con
+arranque en boot. Verificado end-to-end por Tailscale: SPA, API de cuentas
+(registro/login), creación de personaje, GM y transporte WS.
+
+- **URL para jugar (dentro del tailnet):** `http://corsair.tailc48014.ts.net:8080/`
+- **Personaje dios:** `pabjugar` (cuenta creada, `gm=true`). Contraseña de prueba: `aomania1234`.
+- **Puerto HTTP 8080** (no 3000: el 3000 lo ocupa ralphdash en el Corsair). WS del juego en 7667.
+- **On/off:** `systemctl --user start|stop aomania-app.service` (arrastra pod+db).
+- **Secretos:** en `~/.aomania.env` del Corsair (fuera de git, umask 077).
+
+### Bugs de release/contenedor encontrados y corregidos (todos en el fork)
+Ninguno era de lógica de juego; todos de despliegue en release/prod:
+1. `Dockerfile` upstream no construía el cliente ni copiaba `resources/`+`client/dist` → `deploy/Containerfile`.
+2. Faltaba servicio de la app → Quadlet (`deploy/quadlet/`).
+3. Config del Repo en `prod.exs` (compile-time) → horneaba `DATABASE_URL=nil`; movida a `runtime.exs`.
+4. `release.ex` (migraciones) estaba mal ubicado y no compilaba; recolocado en el umbrella.
+5. Assets/SPA servidos con rutas de build-time → `plug_init_mode: :runtime` + SpaController usa `ARGENTUM_PROJECT_ROOT`.
+6. Imágenes con short-name/tag obsoleto → cualificadas a `docker.io` + tag `hexpm/elixir` vigente.
+7. `npm ci` fallaba por lock desincronizado upstream → `npm install`.
+
+### Operativa habitual (ya instalado)
+```bash
+# on / off (no borra datos)
+systemctl --user stop aomania-app.service
+systemctl --user start aomania-app.service
+# logs
+podman logs -f aomania_app
+# tras reconstruir la imagen (nuevo código):
+cd ~/aomania-lambda && git pull && podman build -f deploy/Containerfile -t aomania-lambda:latest .
+systemctl --user restart aomania-app.service   # ExecStartPre re-migra (idempotente)
+```
+
+---
+
+## Instalación desde cero (referencia)
+
 ## El delta: qué faltaba desarrollar (verificado leyendo el código)
 
 Respecto al estado actual del repo, para NUESTRO objetivo (levantarlo yo y jugar con amigos)
