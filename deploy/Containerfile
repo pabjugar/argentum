@@ -66,8 +66,10 @@ WORKDIR /build/server
 RUN mix compile
 
 # --- build del cliente (genera el map pack vía prebuild y produce client/dist) ---
+# npm install (no ci): el package-lock.json de upstream está desincronizado con
+# package.json (esbuild 0.28.0 vs 0.28.1) y `npm ci` aborta ante esa deriva.
 WORKDIR /build/client
-RUN npm ci && npm run build
+RUN npm install --no-audit --no-fund && npm run build
 
 # --- release del server ---
 WORKDIR /build/server
