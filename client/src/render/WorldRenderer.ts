@@ -61,6 +61,27 @@ const hudStyle = new TextStyle({
   fill: 0xeed7b7
 });
 
+// Flags de diagnóstico/rendimiento (Fase A/B del plan de fluidez):
+//  ?fps=1        -> muestra un contador de FPS on-screen
+//  ?continuous=0 -> desactiva el render continuo (vuelve al render bajo demanda),
+//                   para comparar el tacto antes/después.
+const RENDER_FLAGS = (() => {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    return { continuous: p.get("continuous") !== "0", showFps: p.get("fps") === "1" };
+  } catch {
+    return { continuous: true, showFps: false };
+  }
+})();
+
+const fpsStyle = new TextStyle({
+  fontFamily: "monospace",
+  fontSize: 13,
+  fill: 0x66ff99,
+  stroke: 0x000000,
+  strokeThickness: 3
+});
+
 const selfNameStyle = new TextStyle({
   fontFamily: "monospace",
   fontSize: 10,
@@ -718,6 +739,10 @@ export class WorldRenderer {
   private effectsLayer: Container | null = null;
   private chatLayer: Container | null = null;
   private hudText: Text | null = null;
+  private fpsText: Text | null = null;
+  private fpsLastAt = 0;
+  private fpsFrames = 0;
+  private fpsValue = 0;
   private mountNode: HTMLDivElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private renderedMap: WorldMapData | null = null;
@@ -846,6 +871,7 @@ export class WorldRenderer {
     }
 
     const now = performance.now();
+    this.updateFps(now);
     this.runtimeTick?.(now);
     const motionsAnimating = this.updateCharacterMotions(now);
     this.updateCamera(this.lastWorld);
@@ -853,12 +879,39 @@ export class WorldRenderer {
     this.updateRain();
     this.updateSnow();
 
+    // Render continuo mientras estás en el mundo (Fase B1): sin esto, el motor se
+    // apagaba entre casillas y el movimiento se sentía a saltos. Se puede volver
+    // al render bajo demanda con ?continuous=0 para comparar.
+    const keepAliveInWorld = RENDER_FLAGS.continuous && !!this.lastWorld;
     const needsContinuousRender =
-      motionsAnimating || this.transferInProgress || this.rainActive || this.snowActive;
+      keepAliveInWorld ||
+      motionsAnimating ||
+      this.transferInProgress ||
+      this.rainActive ||
+      this.snowActive;
     if (!needsContinuousRender) {
       this.stopRenderLoop();
     }
   };
+
+  private updateFps(now: number) {
+    if (!this.fpsText || !RENDER_FLAGS.showFps) {
+      return;
+    }
+    this.fpsFrames += 1;
+    if (this.fpsLastAt === 0) {
+      this.fpsLastAt = now;
+      return;
+    }
+    const elapsed = now - this.fpsLastAt;
+    if (elapsed >= 500) {
+      this.fpsValue = Math.round((this.fpsFrames * 1000) / elapsed);
+      this.fpsFrames = 0;
+      this.fpsLastAt = now;
+      const mode = RENDER_FLAGS.continuous ? "cont" : "on-demand";
+      this.fpsText.text = `FPS ${this.fpsValue} · ${mode}`;
+    }
+  }
 
   mount(node: HTMLDivElement) {
     this.mountNode = node;
@@ -905,6 +958,12 @@ export class WorldRenderer {
     this.hudText.y = 12;
     this.hudText.visible = false;
     this.app.stage.addChild(this.hudText);
+
+    this.fpsText = new Text("", fpsStyle);
+    this.fpsText.x = 12;
+    this.fpsText.y = 12;
+    this.fpsText.visible = RENDER_FLAGS.showFps;
+    this.app.stage.addChild(this.fpsText);
 
     this.rainLayer = new Container();
     this.rainLayer.visible = false;
