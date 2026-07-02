@@ -68,8 +68,12 @@ RUN mix compile
 # --- build del cliente (genera el map pack vía prebuild y produce client/dist) ---
 # npm install (no ci): el package-lock.json de upstream está desincronizado con
 # package.json (esbuild 0.28.0 vs 0.28.1) y `npm ci` aborta ante esa deriva.
+# SECRET_KEY_BASE dummy SOLO para el build: el hook `maps:build` corre `mix run`
+# con MIX_ENV=prod, y runtime.exs exige el secreto al cargar config aunque el
+# map-pack no lo use. El secreto real llega por env del contenedor en runtime.
 WORKDIR /build/client
-RUN npm install --no-audit --no-fund && npm run build
+RUN export SECRET_KEY_BASE=build-time-placeholder-not-used-at-runtime && \
+    npm install --no-audit --no-fund && npm run build
 
 # --- release del server ---
 WORKDIR /build/server
