@@ -50,7 +50,7 @@ defmodule AoTcpGateway.SessionWorld do
           {:user_char_index_in_server, %{char_index: char_index}},
           Arena.Map.Helpers.character_create_packet(entity),
           {:pos_update, %{x: entity.x, y: entity.y}},
-          {:intervals, %{walk: 210}},
+          {:intervals, %{walk: Arena.Settings.get(:base_walk_interval_ms)}},
           {:update_hp, %{min_hp: entity.hp}},
           {:update_mana, %{min_mana: entity.mana}},
           {:update_stamina, %{min_sta: entity.stamina}},

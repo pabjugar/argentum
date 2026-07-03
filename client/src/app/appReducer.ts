@@ -224,7 +224,9 @@ export function createInitialState(): ClientState {
       targetTile: null,
       combatTexts: [],
       fxEvents: [],
-      walkIntervalMs: 210,
+      // Valor transitorio hasta que llega el paquete :intervals del servidor
+      // (autoritativo). Debe coincidir con base_walk_interval_ms del servidor.
+      walkIntervalMs: 170,
       self: initialCharacter(),
       others: {}
     },

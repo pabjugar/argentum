@@ -510,7 +510,9 @@ function shouldRenderObjectAboveCharacters(catalog: AssetCatalog | null, object:
 }
 
 const MIN_VISUAL_WALK_MS = 55;
-const VISUAL_WALK_DURATION_SCALE = 0.84;
+// 1.0 = el deslizamiento ocupa el intervalo de paso completo → movimiento
+// continuo sin micro-pausa entre casillas (tacto más fluido, "feel 2014").
+const VISUAL_WALK_DURATION_SCALE = 1.0;
 
 function walkIntervalForSpeed(baseInterval: number, speed: number) {
   return Math.max(MIN_VISUAL_WALK_MS, (baseInterval / Math.max(speed, 1)) * VISUAL_WALK_DURATION_SCALE);

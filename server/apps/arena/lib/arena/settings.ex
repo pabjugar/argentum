@@ -39,7 +39,10 @@ defmodule Arena.Settings do
     speed_hack_threshold: 3.0,
 
     # Movement
-    base_walk_interval_ms: 210,
+    # AOmania: 170 ms/casilla (más ágil, "feel 2014"). Autoritativo del servidor;
+    # debe ir sincronizado con el intervalo que se envía al cliente en
+    # session_world.ex (paquete :intervals) para evitar snap-back anti-speedhack.
+    base_walk_interval_ms: 170,
 
     # Combat
     max_level: 50,
