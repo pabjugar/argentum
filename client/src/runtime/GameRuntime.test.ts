@@ -344,6 +344,69 @@ describe("GameRuntime movement prediction", () => {
     expect(runtime.getDebugSnapshot().predictedX).toBe(3);
   });
 
+  it("a tapped direction preempts a still-held key even if released before the boundary", () => {
+    const state = createInitialState();
+    state.connection.status = "connected";
+    state.world.mapStatus = "ready";
+    state.world.map = {
+      mapId: 1,
+      name: "Test",
+      width: 8,
+      height: 8,
+      tiles: new Uint8Array(64),
+      musicHi: 0,
+      musicLow: 0,
+      layers: [[], [], [], []],
+      npcs: [],
+      exits: []
+    };
+    state.world.self.x = 4;
+    state.world.self.y = 4;
+    state.world.self.heading = 2;
+    state.world.self.speed = 1;
+    state.world.walkIntervalMs = 210;
+
+    const transport = {
+      sendWalk: vi.fn(),
+      sendHeading: vi.fn(),
+      requestPositionUpdate: vi.fn()
+    };
+    const ui = {
+      getState: () => state,
+      setSelfPosition: (x: number, y: number) => {
+        state.world.self.x = x;
+        state.world.self.y = y;
+      },
+      setSelfHeading: (heading: number) => {
+        state.world.self.heading = heading;
+      }
+    };
+
+    const runtime = new GameRuntime(transport, ui);
+    runtime.onMapLoaded(1);
+
+    // Hold right and step.
+    runtime.rememberMovementKey("east", false, 1_000);
+    runtime.tick(1_000);
+    expect(transport.sendWalk).toHaveBeenLastCalledWith("east");
+
+    // Tap up mid-cooldown while right stays held, then release up before the boundary.
+    runtime.rememberMovementKey("north", false, 1_050);
+    runtime.tick(1_050); // still in cooldown, no step yet
+    runtime.releaseMovementKey("north");
+    expect(transport.sendWalk).toHaveBeenCalledTimes(1);
+
+    // At the boundary the up tap must win over the still-held right.
+    runtime.tick(1_210);
+    expect(transport.sendWalk).toHaveBeenCalledTimes(2);
+    expect(transport.sendWalk).toHaveBeenLastCalledWith("north");
+
+    // Right is still held, so the following boundary resumes moving right.
+    runtime.tick(1_420);
+    expect(transport.sendWalk).toHaveBeenCalledTimes(3);
+    expect(transport.sendWalk).toHaveBeenLastCalledWith("east");
+  });
+
   it("drops a buffered intent once its window expires", () => {
     const state = createInitialState();
     state.connection.status = "connected";

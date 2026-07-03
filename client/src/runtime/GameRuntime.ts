@@ -17,6 +17,8 @@ export interface MovementDebugSnapshot {
   lastCorrectionAt: number | null;
 }
 
+type WalkStatus = "walked" | "cooldown" | "blocked" | "unavailable";
+
 interface RuntimeTransport {
   sendWalk(direction: Direction): void;
   sendHeading(direction: Direction): void;
@@ -112,34 +114,36 @@ export class GameRuntime {
   }
 
   tick(now: number) {
+    // "Latest intent wins": a recent tap (the last key pressed, even if already
+    // released) takes priority over a still-held key for the NEXT step. This is
+    // what lets an intermittent up-tap register while right is held down.
     const held = this.activeMovementDirection();
-    if (held) {
-      // A held key is serviced directly. If it actually stepped, drop any
-      // buffered intent: that press has been honored, so the buffer must not
-      // fire a second phantom step at the next boundary.
-      if (this.tryPredictedWalk(held, now)) {
-        this.clearBufferedIntent();
-      }
+    const buffered = this.validBufferedDirection(now);
+    const direction = buffered ?? held;
+    if (!direction) {
       return;
     }
 
-    // No key held: honor a recent buffered intent that could NOT be serviced
-    // while it was pressed (it was released mid-cooldown). The walk still goes
-    // through tryPredictedWalk, which only turns/steps at the tile boundary
-    // (respects the cooldown), so the heading never flips mid-slide. Consumed
-    // once so a single tap never produces more than one step.
+    const status = this.tryPredictedWalk(direction, now);
+
+    // A buffered tap is one-shot: consume it as soon as it has been acted on
+    // (it stepped, or it turned into a blocked tile). Keep it ONLY while we are
+    // still waiting for the tile boundary (cooldown), so it fires next tick and
+    // doesn't starve a held key by re-turning forever.
+    if (buffered && status !== "cooldown") {
+      this.clearBufferedIntent();
+    }
+  }
+
+  private validBufferedDirection(now: number): Direction | null {
     if (this.bufferedDirection == null) {
-      return;
+      return null;
     }
-
     if (now - this.bufferedAt >= this.movementBufferWindowMs()) {
       this.clearBufferedIntent();
-      return;
+      return null;
     }
-
-    if (this.tryPredictedWalk(this.bufferedDirection, now)) {
-      this.clearBufferedIntent();
-    }
+    return this.bufferedDirection;
   }
 
   requestPositionUpdate() {
@@ -379,25 +383,25 @@ export class GameRuntime {
     return false;
   }
 
-  private tryPredictedWalk(direction: Direction, now: number) {
+  private tryPredictedWalk(direction: Direction, now: number): WalkStatus {
     const state = this.ui.getState();
 
     if (state.connection.status !== "connected") {
-      return false;
+      return "unavailable";
     }
 
     const world = state.world;
     if (!this.predictionEnabled || world.mapStatus !== "ready" || !world.map) {
-      return false;
+      return "unavailable";
     }
 
     if (now - this.lastWalkAt < this.currentWalkIntervalMs()) {
-      return false;
+      return "cooldown";
     }
 
     const destination = this.predictedDestination(direction);
     if (!destination) {
-      return false;
+      return "unavailable";
     }
 
     if (this.isTileBlocked(destination.x, destination.y) || this.isTileOccupied(destination.x, destination.y)) {
@@ -406,7 +410,7 @@ export class GameRuntime {
         this.renderer?.setSelfHeading(destination.heading);
         this.ui.setSelfHeading(destination.heading);
       }
-      return false;
+      return "blocked";
     }
 
     this.transport.sendWalk(direction);
@@ -424,7 +428,7 @@ export class GameRuntime {
     this.predictedY = destination.y;
     this.syncPredictedPositionToUi(now);
     this.pushPendingWalkStep(destination.x, destination.y);
-    return true;
+    return "walked";
   }
 
   private syncPredictedPositionToUi(now: number) {
